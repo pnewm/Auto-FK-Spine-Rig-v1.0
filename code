@@ -1,0 +1,719 @@
+import maya.cmds as cmds #Importing the maya.cmds library and giving it the alias "cmds". 
+import math #Importing the math library.
+import maya.api.OpenMaya as om #Importing the maya.api.OpenMaya library and giving it the alias "om". 
+
+class MyUi(object): #Defining the class "MyUi"
+    
+    PFX = "fk" #Declaring PFX attribute (in caps as it's a constant)  
+    RO = {"xyz":0, "yzx":1, "zxy":2, "xzy":3, "yxz":4, "zyx":5} #Declaring RO (rotation order) attribute (in caps as it's a constant). I used a dictionary as in maya each rotation order has a number associated with it 
+                                                                #so using a dictionary allows me to still refer to the rotation orders by name e.g. "xyz" and automatically asign the number value maya recognises.
+    LOCS = ("base", "mid", "top") #Declaring LOCS attribute (in caps as it's a constant). Created a tuple of each of the controller names as I use them frequently, it also allows me to loop through the tuple for efficiency.
+    TRANS = ("s", "t", "v", "r") #Declaring TRANS attribute (in caps as it's a constant). Created a tuple of each of the translates maya recognises in the setAttr command. This allows for looping for efficiency.
+    WINDOW_NAME = "MyUiWindow" #Declaring TRANS attribute (in caps as it's a constant). Just the title of the main window which gets used frequently so made sense to make an attribute out of it. 
+                               #Also avoids hard coding the name so the window name can be changed easily. 
+    BOTTOM_LOCATOR_NAME = "bottomPoint" #Same as above although now for the bottom locator name.
+    TOP_LOCATOR_NAME = "topPoint" #Same as above although now for the top locator name.
+    
+    rigGrpStartName = "spine_" #Sets the starting name of the main group surrounding the entire rig will be called.
+    rigGrpName = None #Will be the name for the group surrounding the entire rig. At the moment it is empty. 
+                
+    rigNo = None #Will include e.g. "rig_01" in the title for everything else to make them unique if there's multiple rigs. 
+    
+    
+    radRadio = None #Empty attribute ready to be assigned for future use.
+    lenOpsRadio = None #Empty attribute ready to be assigned for future use.
+    botLocBtn = None #Empty attribute ready to be assigned for future use.
+    topLocBtn = None #Empty attribute ready to be assigned for future use.
+    executeLocBtn = None #Empty attribute ready to be assigned for future use. 
+    executeTotalLenBtn = None #Empty attribute ready to be assigned for future use. 
+    executeBtwnLenBtn = None #Empty attribute ready to be assigned for future use. 
+    totalLenSep = None #Empty attribute ready to be assigned for future use. 
+    btwnSep = None #Empty attribute ready to be assigned for future use. 
+    locSep = None #Empty attribute ready to be assigned for future use. 
+    botLoc = None #Empty attribute ready to be assigned for future use. 
+    topLoc = None #Empty attribute ready to be assigned for future use. 
+    userBtwnLen = None #Empty attribute ready to be assigned for future use. 
+    confirmSet = None #Empty attribute ready to be assigned for future use. 
+    main_window = None #Empty attribute ready to be assigned for future use. 
+    errorWin1 = None #Empty attribute ready to be assigned for future use. 
+    errorWin2 = None #Empty attribute ready to be assigned for future use. 
+    userCtlSize = None #Empty attribute ready to be assigned for future use. 
+    exitAllUICmd = None #Empty attribute ready to be assigned for future use. 
+    attrsToLock = None #Empty attribute ready to be assigned for future use. 
+    totalLen = None #Empty attribute ready to be assigned for future use. 
+    ctlScale = None #Empty attribute ready to be assigned for future use. 
+    setCtlScale = None #Empty attribute ready to be assigned for future use. 
+    getAutoVals = None #Empty attribute ready to be assigned for future use. 
+    getAndSetCtlScale = None #Empty attribute ready to be assigned for future use. 
+    autoCtlScale = None #Empty attribute ready to be assigned for future use. 
+    autoRad = None #Empty attribute ready to be assigned for future use. 
+    userRad = None #Empty attribute ready to be assigned for future use. 
+
+    jRes = 5 #Atrribute for the joint resolution. The 5 is just a default value where the user will be able to change this using the GUI. 
+    jOri = "xyz" #Same as above except for the joint orientation. 
+    jRad = 1 #Same as above except for the joint radius. 
+    jBtwnLen = 2 #Same as above except for the distance between joints. 
+    jTotalLen = 10 #Same as above except for the total length of the joint chain. 
+    userCtlScale = 1 #Same as above except for the scale of the controllers. 
+    
+    
+    j_list = [] #An empty list ready to be assigned for future use. 
+    ctlGrps = {} #An empty dictionary ready to be assigned for future use. 
+    
+    @classmethod    
+    def findHowManyRigs(cls):
+        groups = [p for p in cmds.ls(type='transform') or [] if not cmds.listRelatives(p, s=True)] #Method I found online to get the ls command to work for groups. 
+        spineGrps = [i for i in groups if cls.rigGrpStartName in i] #Loop through the group and look for any groups that start with the rigGrpStartName attribute e.g. all groups that contain "spine_"
+        
+        if len(spineGrps) == 0: #If there are no rigs in the scene i.e. no groups with the rigGrpStartName attribute in the name. 
+            cls.rigGrpName = cls.rigGrpStartName + "01" #The group name will be the rigGrpStartName value + 01 (the first rig).
+            cls.rigNo = "rig_" + "01" #Same with above except with "rig_"
+            return #Return to exit the method.
+            
+        last = spineGrps[-1][-2:] #Get the last two charecters of that sting and save it to a local variable. 
+        x = int(last) + 1 #Add 1 to that number (after converting it to an int) and save to a local variable. 
+
+        if x < 10: #If the number is less than 10.  
+            cls.rigGrpName = cls.rigGrpStartName + "0" + str(x) #Add 0 to the start e.g. 03 then concatenate that with the rigGrpStartName attribute.
+            cls.rigNo = "rig_" + "0" + str(x) #Same as above only with "rig_"
+            return #Return to exit the method.
+
+        else: #If not.
+            cls.rigGrpName = cls.rigGrpStartName + str(x) #Just use that number as the string then concatenate that with the rigGrpStartName attribute.
+            cls.rigNo = "rig_"+ str(x) #Same as above only with "rig_"
+            return #Return to exit the method.
+    
+    @classmethod #Decorator for classmethod definition.
+    def display(cls): #Decloration of the method used for creating the main GUI.
+        MyUi.findHowManyRigs()#Calls the find how many rigs method. 
+        if cmds.window( cls.WINDOW_NAME, exists=True ): #This command checks if there is currently a main GUI window already open. More of an insurance, as accidently launching 10 GUI windows and having to close 
+                                                        #them individually would be annoying for the user. 
+            cmds.deleteUI( cls.WINDOW_NAME, window=True ) #If there is it will delete the previous window. 
+            
+        cls.main_window = cmds.window( cls.WINDOW_NAME, #creating the main window and assigning it to the main_window attribute. The title of the window is the attribute constant declared before
+                                  title="FK Spine Creator", #This is the title that will be displayed at the top of the window. 
+                                  resizeToFitChildren=True, #Will resize the window to fit all of it's contents.
+                                  sizeable=False, #Stops the user from being able to resize the window. 
+                                  height=148, #Determines the height of the window. 
+                                  width = 450  ) #Determines the height of the window. 
+                                   
+        cls.main_window = cmds.columnLayout() #Sets the construction of the window to a column layout system. 
+        
+        cmds.separator(style="none", width=450, height=6) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+       
+        cls.userJntAmt = cmds.optionMenuGrp( label="Joint Amount:" , changeCommand="MyUi.getJntAmt()", ) #Creates a drop down menu for the joint amounts. The changeCommand will read the users input and use it to create the rig. 
+        for i in range (5, 20, 2): #I just used a for loop to create the drop down menu's inputs as all i'm after is number iterating by two. 
+            cmds.menuItem( f"{i}" ) #This just adds the numbers to the drop down menu. 
+            
+        cls.userRO = cmds.optionMenuGrp( label="Rotate Order:" , changeCommand="MyUi.getRO()" ) #Creates a drop down menu for the rotation order. The changeCommand will read the users input and use it to create the rig. 
+        for key in cls.RO: #Similar with the for loop above but will loop through the RO dictionary. As I want to display the key e.g. "xyz" I specify that I want the iterator to be the key values. 
+            cmds.menuItem( f"{key}" ) #Assigns the key values to the drop down menu. 
+                                        
+        cls.radRadio = cmds.radioButtonGrp( 'jntPosMthd', #creates the radio button for the user to pick between the fixed length options or locator options. 
+                                           label="", #Wanted a blank label so kept this empty. 
+                                           labelArray2=('Fixed Length', 'Between Two Locators'), #Text for the radio buttons.
+                                           numberOfRadioButtons=2, #Specifying I only want two options. 
+                                           onCommand1="MyUi.displayLenOps()", #Runs the display len option method. The display and hide methods were needed so what is being displayed in the GUI changes based on the user's choice. 
+                                                                              #On command means when the radio box is changed to that particular option thats when the method gets run. 
+                                           offCommand1="MyUi.hideLenOps()",  #Runs the hide len option method. Off command means a method will be run when that option is deselected.  
+                                           onCommand2="MyUi.displayLocOps()", #Same as the previous on command execept with the 
+                                           offCommand2="MyUi.hideLocOps()" ) #Same as the previous off command execept with the 
+                                           
+        cmds.separator( style="single", height=5 , width=450) #Creates a seperator, as it's set to single it will be a line in the GUI window. 
+                                                
+        cls.lenOpsRadio = cmds.radioButtonGrp( 'totalOrBtwn', #Creates the radio button for the user to pick between the fixed length options or locator options. 
+                                           label="", #Wanted a blank label so kept this empty. 
+                                           labelArray2=('Total Length', 'Length Between Joints'), #Text for the radio buttons.
+                                           numberOfRadioButtons=2 ,#Specifying I only want two options. 
+                                           onCommand1="MyUi.displayTotalLen()", #Same as the previous on command execept with the display total length options. 
+                                           offCommand1="MyUi.hideTotalLen()", #Same as the previous off command execept with the hide total length options.
+                                           onCommand2="MyUi.displayBtwnLen()", #Same as the previous on command execept with the display between length options. 
+                                           offCommand2="MyUi.hideBtwnLen()", #Same as the previous off command execept with the hide between length options. 
+                                           visible=False ) # The visability of the radio button is off by default. This was the point of the previous on commands which will change the visibilty when triggered.                                                                                          
+                                                                    
+        cls.botLocBtn = cmds.button( "botLocBtn", #Creates a button for the user to create the bottom locator. 
+                                   label="Create Bottom Locator", #Gives the button text. 
+                                   command= "MyUi.createBotLoctopLocBtn()", #Launches the command that creates the bottom locator when pressed. 
+                                   visible=False, #Same as the previous visibilty defaults. 
+                                   width=450, #Determines the width of the buttton.
+                                   height=20 ) #Determines the height of the buttton. 
+                                   
+        cls.topLocBtn = cmds.button( "topLocBtn", #Creates a button for the user to create the top locator. 
+                                   label="Create Top Locator", #Gives the button text. 
+                                   visible=False, #Same as the previous visibilty defaults. 
+                                   width=450, #Determines the width of the buttton.
+                                   command="MyUi.createTopLoc()" ,  #Launches the command that creates the top locator when pressed. 
+                                   height=20 ) #Determines the height of the buttton. 
+                                                            
+        cls.userTotalLen = cmds.floatSliderGrp( label='Total Length of Joint Chain:', #Creates a float slider for the user to specify the total length of the joint chain. 
+                                                 field=True, #Makes the float field editable by the user. 
+                                                 minValue=1.0, #Determines the minimum value for the slider.  
+                                                 maxValue=100, #Determines the maximum value for the slider. 
+                                                 fieldMinValue=0.01, #Determines the minimum value for the text box, I made this lower than the slider so the user can make it smaller than 1 if they want.  
+                                                 fieldMaxValue=10000, #Determines the maximum value for the text box, I made this higher than the slider so the user can make it smaller than 100 if they want.  
+                                                 value=10, #Sets the default value. 
+                                                 precision=2, #Sets how many decimal places the number can have. 
+                                                 visible=False, #Same as the previous visibilty defaults. 
+                                                 changeCommand="MyUi.getTotalLen()" ) #Launches the command that saves then eventually uses the value the user sets. 
+        
+        cls.userBtwnLen = cmds.floatSliderGrp( label='Length Between Each Joint:', #Creates a float slider for the user to specify the length bewteen each joint. 
+                                                 field=True, #Makes the float field editable by the user. 
+                                                 minValue=0.1, #Determines the minimum value for the slider.  
+                                                 maxValue=10, #Determines the maximum value for the slider. 
+                                                 fieldMinValue=0.001, #Determines the minimum value for the text box, I made this lower than the slider so the user can make it smaller than 1 if they want.
+                                                 fieldMaxValue=1000, #Determines the maximum value for the text box, I made this higher than the slider so the user can make it smaller than 100 if they want.
+                                                 value=2, #Sets the default value.
+                                                 precision=2, #Sets how many decimal places the number can have.
+                                                 visible=False, #Same as the previous visibilty defaults.
+                                                 changeCommand="MyUi.getBtwnLen()" ) #Launches the command that saves then eventually uses the value the user sets.
+                                                 
+        cls.btwnSep = cmds.separator( style="single", height=5 , width=450, visible=False ) #Creates a seperator, as it's set to single it will be a line in the GUI window, the visibilty is the same as previous defaults. 
+
+        cls.locSep = cmds.separator( style="single", height=5 , width=450, visible=False ) #Creates a seperator, as it's set to single it will be a line in the GUI window, the visibilty is the same as previous defaults. 
+
+        cls.executeLocBtn = cmds.button( "executeLocBtn", #Creates a button for the user to execute the locator method.
+                                   label="Execute Locator Method", #Gives the button text.
+                                   visible=False, #Same as the previous visibilty defaults.
+                                   width=450, #Determines the width of the buttton.
+                                   command="MyUi.locExecute()", #Launches the command that creates the rig using the locator method. 
+                                   height=33 ) #Determines the height of the buttton.
+                                   
+        cls.totalLenSep = cmds.separator( style="single", height=5 , width=450, visible=False ) #Creates a seperator, as it's set to single it will be a line in the GUI window, the visibilty is the same as previous defaults. 
+                    
+        cls.executeTotalLenBtn = cmds.button( "executeTotalLenBtn", #Creates a button for the user to execute the total length method.
+                                   label="Execute Total Length Method", #Gives the button text.
+                                   visible=False, #Same as the previous visibilty defaults.
+                                   width=450, #Determines the width of the buttton.
+                                   command="MyUi.totalLenExecute()", #Launches the command that creates the rig using the total length method.
+                                   height=33 ) #Determines the height of the buttton.
+                                                                 
+        cls.executeBtwnLenBtn = cmds.button( "executeBtwnLenBtn", #Creates a button for the user to execute the between length method.
+                                   label="Execute Length Between Joints Method", #Gives the button text.
+                                   visible=False, #Same as the previous visibilty defaults.
+                                   width=450, #Determines the width of the buttton.
+                                   command="MyUi.btwnLenExecute()", #Launches the command that creates the rig using the between length method.
+                                   height=33 ) #Determines the height of the buttton.
+        
+        cmds.scriptJob( uiDeleted = [cls.WINDOW_NAME, cls.deleteLocs] ) #Launches a command that deletes the locators if the user exits the GUI. 
+                              
+        cmds.showWindow( cls.WINDOW_NAME ) #Displays the window. 
+      
+        
+    @classmethod #Decorator for classmethod definition.
+    def displayLenOps(cls): #Method for displaying the length options. 
+        cmds.radioButtonGrp( cls.lenOpsRadio, edit=True, visible=True ) #Changes the default visibilty of the length options radio button to false (not visible) to true. This would have been connected to the previous radio buttons on command. 
+            
+    @classmethod #Decorator for classmethod definition.
+    def hideLenOps(cls): #Method for hiding the length options. 
+        cmds.radioButtonGrp( cls.lenOpsRadio, edit=True, visible=False ) 
+        isUserLen = cmds.floatSliderGrp( cls.userTotalLen, query=True, visible=True ) #Assigns the case of when the user total length float slider is visible to a local variable.                      
+        isBtwnLen = cmds.floatSliderGrp( cls.userBtwnLen, query=True, visible=True ) #Assigns the case of when the user between length float slider is visible to a local variable.         
+        isTotalLenBtn = cmds.button( cls.executeTotalLenBtn, query=True, visible=True ) #Assigns the case of when the execute total length button is visible to a local variable.         
+        isBtwnLenBtn =  cmds.button( cls.executeBtwnLenBtn, query=True, visible=True ) #Assigns the case of when the execute between length button is visible to a local variable. 
+        isTotalSep = cmds.separator( cls.totalLenSep, query=True, visible=True ) #Assigns the case of when the total length seperator is visible to a local variable. 
+        isBtwnSep = cmds.separator( cls.btwnSep, query=True, visible=True ) #Assigns the case of when the between length seperator is visible to a local variable. 
+                                       
+        if isUserLen: #This checks if the user length float slider is being displayed. 
+            cmds.floatSliderGrp( cls.userTotalLen, edit=True, visible=False ) #Hides the user total length float slider. 
+            
+        if isBtwnLen: #This checks if the between length float slider is being displayed.
+            cmds.floatSliderGrp( cls.userBtwnLen, edit=True, visible=False )  #Hides the user between length float slider.
+            
+        if isTotalLenBtn: #This checks if the execute total length button is being displayed.
+            cmds.button( cls.executeTotalLenBtn, edit=True, visible=False ) #Hides the execute total length button.
+            
+        if isBtwnLenBtn: #This checks if the execute between length button is being displayed.
+            cmds.button( cls.executeBtwnLenBtn, edit=True, visible=False ) #Hides the execute between length button.    
+            
+        if isTotalSep: #This checks if the total length seperator is being displayed.
+            cmds.separator( cls.totalLenSep, edit=True, visible=False ) #Hides the total length seperator.
+            
+        if isBtwnLen: #This checks if the between length seperator is being displayed.
+            cmds.separator( cls.btwnSep, edit=True, visible=False ) #Hides the between length seperator.                             
+            
+    @classmethod #Decorator for classmethod definition.
+    def displayLocOps(cls): #Method for displaying the locator options. 
+        cmds.button( cls.botLocBtn, edit=True, visible=True ) #Changes the visibility of the bottom locator button to true (visible). 
+        
+    @classmethod #Decorator for classmethod definition.
+    def hideLocOps(cls): #Method for hiding the locator options. 
+        isBotbtwn = cmds.button( cls.botLocBtn, query=True, visible=True ) #Assigns the case of when the bottom locator button is visible to a local variable.
+        isTopbtwn = cmds.button( cls.topLocBtn, query=True, visible=True ) #Assigns the case of when the top locator button is visible to a local variable.
+        isLocSep = cmds.separator( cls.locSep, query=True, visible=True ) #Assigns the case of when the locator seperator is visible to a local variable.
+        isExecutebtwn = cmds.button( cls.executeLocBtn, query=True, visible=True ) #Assigns the case of when the execute locator method button is visible to a local variable.
+        
+        if cls.botLoc == None: #As the botLoc attribute was initially declared with a value of none, this checks whether this variable has been used. 
+            pass #In this case the attribute hasn't been used so it should just do nothing in this case. 
+            
+        else: #If it's value isn't none (it has been used) then.
+            cmds.delete( cls.BOTTOM_LOCATOR_NAME ) #Delete the bottom locator. 
+            cls.botLoc = None #Reset the attribute to default (none value). 
+            
+        if cls.topLoc == None: #Same as above, has the topLoc atrribute been used. 
+            pass #Do nothing if it hasn't been touched. 
+        else: #If it has been used. 
+            cmds.delete( cls.TOP_LOCATOR_NAME ) #Delete the top locator.
+            cls.topLoc = None #Reset the attribute to default (none value). 
+        
+        if isBotbtwn: #This checks if the bottom locator button is being displayed.
+            cmds.button( cls.botLocBtn, edit=True, visible=False ) #Hides the bottom locator button.     
+            
+        if isTopbtwn: #This checks if the top locator button is being displayed.
+            cmds.button( cls.topLocBtn, edit=True, visible=False ) #Hides the top locator button.  
+            
+        if isExecutebtwn: #This checks if the execute locator method button is being displayed.
+            cmds.button( cls.executeLocBtn, edit=True, visible=False ) #Hides the execute locator method button.    
+            
+        if isLocSep: #This checks if the locator seperator is being displayed.
+            cmds.separator( cls.locSep, edit=True, visible=False ) #Hides the locator seperator.
+               
+    @classmethod #Decorator for classmethod definition.
+    def displayTotalLen(cls): #Method for displaying the total length options. 
+        cmds.separator( cls.totalLenSep, edit=True, visible=True ) #Shows the total length seperator.
+        cmds.floatSliderGrp( cls.userTotalLen, edit=True, visible=True ) #Shows the total length float slider.
+        cmds.button( cls.executeTotalLenBtn, edit=True, visible=True ) #Shows the execute total length button.
+
+    @classmethod #Decorator for classmethod definition.
+    def hideTotalLen(cls): #Method for hiding the total length options. 
+        cmds.separator( cls.totalLenSep, edit=True, visible=False ) #Hides the total length seperator.
+        cmds.floatSliderGrp( cls.userTotalLen, edit=True, visible=False ) #Hides the total length float slider.
+        cmds.button( cls.executeTotalLenBtn, edit=True, visible=False ) #Hides the execute total length button.
+  
+    @classmethod #Decorator for classmethod definition.
+    def displayBtwnLen(cls): #Method for displaying the between length options. 
+        cmds.separator( cls.btwnSep, edit=True, visible=True ) #Shows the between length seperator.
+        cmds.floatSliderGrp( cls.userBtwnLen, edit=True, visible=True ) #Shows the between length float slider.
+        cmds.button( cls.executeBtwnLenBtn, edit=True, visible=True ) #Shows the execute between length button. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def hideBtwnLen(cls): #Method for hiding the between length options. 
+        cmds.separator( cls.btwnSep, edit=True, visible=False ) #Hides the total length float slider.
+        cmds.floatSliderGrp( cls.userBtwnLen, edit=True, visible=False ) #Hides the between length float slider.
+        cmds.button( cls.executeBtwnLenBtn, edit=True, visible=False ) #Hides the execute between length button. 
+
+    @classmethod #Decorator for classmethod definition.
+    def createBotLoctopLocBtn(cls): #Method for creating the bottom locator and displaying the create top locator button. 
+        if cls.botLoc == None: #As the botLoc attribute was initially declared with a value of none, this checks whether this variable has been used. 
+            pass #In this case the attribute hasn't been used so it should just do nothing in this case. 
+        else: #If it's value isn't none (it has been used) then.
+            cmds.delete( cls.BOTTOM_LOCATOR_NAME ) #Delete the bottom locator.
+            cls.botLoc = None #Reset the attribute to default (none value).  
+            
+        cls.botLoc = cmds.spaceLocator( name=cls.BOTTOM_LOCATOR_NAME ) #Creates the bottom locator and uses the BOTTOM_LOCATOR_NAME attribute as its name. 
+        cmds.button( cls.topLocBtn, edit=True, visible=True ) #Shows the top locator button. 
+
+    @classmethod #Decorator for classmethod definition.
+    def createTopLoc(cls): #Method for creating the top locator and displaying the locator seperator and execute locator method button. 
+        if cls.topLoc == None: #Same as above, has the topLoc atrribute been used. 
+            pass #Do nothing if it hasn't been touched. 
+        else: #If it has been used. 
+            cmds.delete( cls.TOP_LOCATOR_NAME ) #Delete the top locator.
+            cls.topLoc = None #Reset the attribute to default (none value).
+            
+        cls.topLoc = cmds.spaceLocator( name=cls.TOP_LOCATOR_NAME ) #Creates the bottom locator and uses the TOP_LOCATOR_NAME attribute as its name. 
+        cmds.separator( cls.locSep, edit=True, visible=True ) #Shows the locator seperator. 
+        cmds.button( cls.executeLocBtn, edit=True, visible=True ) #Shows the execute locator method button. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def deleteLocs(cls): #Method for deleting both locators. 
+        if cls.botLoc == None: #As the botLoc attribute was initially declared with a value of none, this checks whether this variable has been used. 
+            pass #In this case the attribute hasn't been used so it should just do nothing in this case. 
+        else: #If it's value isn't none (it has been used) then.
+            cmds.delete( cls.BOTTOM_LOCATOR_NAME ) #Delete the bottom locator. 
+            cls.botLoc = None #Reset the attribute to default (none value). 
+            
+        if cls.topLoc == None: #Same as above, has the topLoc atrribute been used. 
+            pass #Do nothing if it hasn't been touched.
+        else: #If it has been used. 
+            cmds.delete( cls.TOP_LOCATOR_NAME ) #Delete the top locator.
+            cls.topLoc = None #Reset the attribute to default (none value).
+            
+    @classmethod #Decorator for classmethod definition.
+    def getJntAmt(cls): #Method for getting the joint ammount set by the user in the option menu drop down. 
+        cls.jRes = cmds.optionMenuGrp( cls.userJntAmt, query=True, value=True ) #Gets the value of the option menu and saves it to the jRes attribute. 
+
+    @classmethod #Decorator for classmethod definition.
+    def getRO(cls): #Method for getting the rotation order set by the user in the option menu drop down. 
+        cls.jOri = cmds.optionMenuGrp( cls.userRO, query=True, value=True ) #Gets the value of the option menu and saves it to the jOri attribute. 
+ 
+    @classmethod #Decorator for classmethod definition.
+    def getTotalLen(cls):  #Method for getting the total length set by the user in the total length float slider. 
+        cls.jTotalLen = cmds.floatSliderGrp( cls.userTotalLen, query=True, value=True ) #Gets the value of the float slider and saves it to the jTotalLen attribute. 
+            
+    @classmethod #Decorator for classmethod definition.
+    def getBtwnLen(cls): #Method for getting the between length set by the user in the between length float slider, and converts the between length value to a total length value. 
+        cls.jBtwnLen = cmds.floatSliderGrp( cls.userBtwnLen, query=True, value=True ) #Gets the value of the float slider and saves it to the jBtwnLen attribute. 
+        cls.jTotalLen = round(float(cls.jBtwnLen) * (float(cls.jRes) - 1), 2) #Formula I came up with to convert the jBtwnLen to a total length and assign that value to the jTotalLen attribute. e.g. 2(between length) * (7 (jRes) - 1 (the first joint doesn't add to the length so - 1) = 12(jTotalLen)
+
+        
+    @classmethod #Decorator for classmethod definition.
+    def calculateLocDis(cls): #Found this solution online for calculating the distance between two vectors i.e. the top and bottom locators y-value. Method for calculating the distance between the two locators. 
+        t1, t2 = cmds.xform( cls.BOTTOM_LOCATOR_NAME, translation=1, query =1 ), cmds.xform( cls.TOP_LOCATOR_NAME, translation=1, query =1 ) #This assigns the Y-values for each locator to a local variable
+        v1, v2 = om.MVector(t1), om.MVector(t2) #I know in some languages (and in Python using NumPy) that a vector is actually a data type so I'm wondering if this actually converts the floats into a seperate vector data type using the open maya api. 
+        cls.jTotalLen = float(( om.MVector(v2-v1).length() )) #This is the formula for calculating the length between the vectors i.e. the total length of the desired joint chain. It then saves this value to the jTotalLen attribute. 
+    
+    @classmethod #Decorator for classmethod definition.
+    def aimLocs(cls): #Method for creating an aim constraint between the locators. This was needed incase the x and z positions of the locators were different. 
+        cmds.aimConstraint( cls.TOP_LOCATOR_NAME, cls.BOTTOM_LOCATOR_NAME, aimVector=[0, 1, 0] ) #Creates an aim constrain pointing the bottom locator to the top locator. When the joint chain is created the joints will adopt this rotation.
+        cmds.delete( f"{cls.BOTTOM_LOCATOR_NAME}_aimConstraint1" ) #As the constriant was only needed to point the bottom locator once it can be deleted straight after the operation. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def orientRig(cls): #Method for orienting the rig to the bottom locator in the case that the bottom locator's X and Z rotations are changed from the previous aim constraint or if the bottom locator is positioned anywhere else but world 0.
+        tempPC = cmds.parentConstraint( cls.BOTTOM_LOCATOR_NAME, cls.rigGrpName ) #Creates a temporary parent constaint with the bottom locator as the master and the group surrounding the rig as its slave. 
+        cmds.delete(tempPC) #Deletes the parent constraint.
+        cmds.delete( cls.rigGrpName, constructionHistory = True ) #Deletes the construction history off the group. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def lock_attrs(cls, pTarg): #This method locks the attributes of the controllers, con group and off group. 
+        if "ctl" in str(pTarg): #As I want everything to be locked apart for the rotations values for the controllers I need to search the input attribute to see if its a control. 
+            x = 3 #if it is a control I want only the first three values of the TRANS list s(scale), t(translate), v(visibility) to be locked. 
+        else: #For the rest of the cases I want all 4 translations to be locked. 
+            x = 4 #So now it will loop through the entire list (s, t, v, r)
+        for i in range (x): #Create a loop that goes for x ammount of time (is it a controller or not).
+            cmds.setAttr(f"{cls.PFX}_{pTarg}.{cls.TRANS[i]}", lock=True) #Lock the input using the TRANS list value (this is the format maya uses to read what translation it should act on). 
+            
+    @classmethod #Decorator for classmethod definition.     
+    def create_ctl(cls, pLoc): #Method for creating the controllers, take a what will eventually be the LOC values ("base" ...) . 
+        tmp_ctl = cmds.circle( nr=[1, 0, 0], radius=2.0, name=f"{cls.PFX}_{pLoc}_{cls.rigNo}_ctl" ) #Creates a nurbs circle and assigns the prefix aswell as the location for its name.
+        cmds.selectMode(co=True) #Goes into component selection mode. 
+        cmds.select( f"{cls.PFX}_{pLoc}_{cls.rigNo}_ctl.cv[2]", r=True ) #Selects the 2nd CV. 
+        cmds.select( f"{cls.PFX}_{pLoc}_{cls.rigNo}_ctl.cv[4]", add=True ) #Selects the 4th CV. 
+        cmds.scale( 1, 0.4, 1 ) #scales those two CV's in the Y by 0.4. 
+        cmds.selectMode(o=True) #Switches back to object selection mode.
+        tmp_con = cmds.group( tmp_ctl, name=f"{cls.PFX}_{pLoc}_{cls.rigNo}_con" ) #Groups the controller and and assigns the prefix aswell as the location for the con groups name.
+        tmp_off = cmds.group( tmp_con, name=f"{cls.PFX}_{pLoc}_{cls.rigNo}_off" ) #Groups the con group and and assigns the prefix aswell as the location for the off groups name.
+        cmds.selectMode(co=True) #Goes into component selection mode. This is to rotate the controllers local rotation axis without affecting its rotation value. 
+        cmds.setAttr( f"{tmp_off}.rotateZ", 90 ) # rotates the Z of the off group 
+        cmds.selectMode(o=True) #Switches back to object selection mode.
+        cmds.setAttr( f"{tmp_ctl[0]}.rotateOrder", cls.RO[cls.jOri] ) #Sets the controllers rotation order according to the users input. 
+        cmds.setAttr( f"{tmp_con}.rotateOrder", cls.RO[cls.jOri] ) #Sets the con group rotation order according to the users input. 
+        cmds.setAttr( f"{tmp_off}.rotateOrder", cls.RO[cls.jOri] ) #Sets the off group rotation order according to the users input. 
+        return tmp_ctl, tmp_con, tmp_off
+        
+    def jnt_ori(pCtl, pJl): #Method to create an orient constraint between the controller and joint. Modular with inputs so can be used multiple times. As it doesn't take any of the attributes it doesn't need to be a class method. 
+        _ = (cmds.orientConstraint( pCtl, pJl )) #Creates that orient constraint and saves it to a blank variable. 
+        return _ #Returns the result of that blank variable. 
+        
+    def ratioFormula(pTargList, pIt, pN): #Method for calculating the influence each joint should have. This number needs to change with the joint ammount (i.e. 5 joint chain influence is going to have completely different influences than a 15 joint chain).
+                                          #As it doesn't take any of the attributes it doesn't need to be a class method. 
+        _ = ( round( ( (pIt + pN) % (math.ceil(0.5  * len(pTargList) ) ) ) / (math.ceil(0.5  * len(pTargList))) ,2) ) #This is the formula I came up with, i'm sure there's probably simpilar ways of getting the same number but hey it works.  
+        return _ #Returns the result of that blank variable. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def convertTotalLen(cls): #Method for coverting the total length to the length between the joints. 
+        x = float(cls.jRes) - 1 #Save the jRes - 1 (disregard the first joint) to a local variable. 
+        y = float(cls.jTotalLen) #Save the total length to a local variable. 
+        cls.jBtwnLen = (1/x) * y #Formula for converting the total length to between joint lengths. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def showLocSamePosError(cls): #Method for showing an error window if the locators are in the same position. 
+        cls.errorWin1 = cmds.window( width=350, height=60, title="Error" ) #Creates a window with the title error. 
+        cmds.columnLayout( adjustableColumn=True ) #Sets the orientation of the window to a column layout. 
+        cmds.separator( style="none", width=350, height=20 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+        cmds.text( label="Error: Locators Cannot Have The Same Translation!", align='center', width=200 ) #Displays text in the window telling the user that the locators can't have the same translations. 
+        cmds.separator( style="none", width=350, height=20 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+        cmds.button( label='Okay', command="MyUi.deleteLocError1()" ) #Creates a button for the user to exit the window, once pressed the window will disapear. 
+        cmds.showWindow() #Displays the window.
+        
+    @classmethod #Decorator for classmethod definition.
+    def checkLocPosOk(cls): #Method to check if the locator positions are ok. 
+        botLocPos = cmds.xform( cls.botLoc, worldSpace=True, translation=True, query=True ) #Saves the bottom locators position in world space to a local variable. 
+        topLocPos = cmds.xform( cls.topLoc, worldSpace=True, translation=True, query=True ) #Saves the top locators position in world space to a local variable. 
+        if botLocPos[1] > topLocPos[1]: #Check if the bottom locators Y value is greater than that of the top locator. 
+            return True #If it is return true. 
+        else: # Otherwise. 
+            pass #Ignore it (pass). 
+        
+    @classmethod #Decorator for classmethod definition.
+    def showLocTopPosError(cls): #Method for showing an error window if the bottom locators Y value is greater than that on the top locator.  
+        cls.errorWin2 = cmds.window( width=350, height=60, title="Error" ) #Creates a window with the title error. 
+        cmds.columnLayout( adjustableColumn=True ) #Sets the orientation of the window to a column layout.
+        cmds.separator( style="none", width=350, height=20 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+        cmds.text( label="Error: Bottom Locator Cannot Have a Y-Translation \n Value Higher Than the Top Locator!", align='center', width=200) #Displays text in the window telling the user that the bottom locators Y-value vcan't be greater than that of the tops. 
+        cmds.separator( style="none", width=350, height=20 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+        cmds.button( label='Okay', command="MyUi.deleteLocError2()" ) #Creates a button for the user to exit the window, once pressed the window will disapear.        
+        cmds.showWindow() #Displays the window.
+        
+    @classmethod #Decorator for classmethod definition.
+    def deleteLocError1(cls): #Method for deleting the same position locator error. 
+        cmds.deleteUI( cls.errorWin1 ) #Deletes the window. 
+        cmds.window( cls.WINDOW_NAME, edit=True, visible= True ) #Displays the main window again. 
+
+    @classmethod #Decorator for classmethod definition.
+    def deleteLocError2(cls): #Method for deleting the botton locator Y greater than top locator error. 
+        cmds.deleteUI( cls.errorWin2 ) #Deletes the window. 
+        cmds.window( cls.WINDOW_NAME, edit=True, visible= True ) #Displays the main window again. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def exitAllUI(cls): #Method for deleting all UI's. 
+        cls.exitAllUICmd = True #Sets the exitAllUICmd attribute to true. 
+        cmds.deleteUI( cls.confirmSet ) #Deletes the confirm settings window. 
+        cmds.deleteUI( cls.WINDOW_NAME, window=True ) #Deletes the main window. 
+        MyUi.runLockAttrs() #Runs the lock attribute method. As this method is one of the last to be run I decided to call it here. 
+
+    @classmethod #Decorator for classmethod definition.
+    def editOp(cls): #Method for if the user wishes to edit the rig in the conformation window. 
+        cmds.window( cls.WINDOW_NAME, edit=True, visible= True ) #Brings back the main window. 
+        cmds.deleteUI( cls.confirmSet ) #Deletes the confirmation window. 
+            
+    @classmethod #Decorator for classmethod definition.
+    def deleteRig(cls): #Method to delete the entire rig. 
+        if cls.exitAllUICmd: #Won't execute if the UI is closed because the user is confirming the rig. 
+            pass #Does nothing
+        else: #Other cases
+            cmds.delete( cls.rigGrpName ) #Delete the rig. 
+            
+        cls.exitAllUICmd = None #Reset the exitAllUICmd to default. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def locEditOp(cls):#Method for when the user presses the edit option in the confirmation window for the locators method. 
+        cmds.window( cls.WINDOW_NAME, edit=True, visible= True ) #Brings the main window back. 
+        tempJntNo = cls.jRes #As I wan't the main window to save all the previous values I have to save them to a temporary local variable. 
+        tempRO = cls.jOri #Same as above only with the rotation order. 
+        cmds.deleteUI( cls.confirmSet ) #Deletes the locator confirmation window. 
+        cmds.deleteUI( cls.WINDOW_NAME, window=True ) #Deletes the main window. 
+        MyUi.display() #Redisplays the main window.
+        cmds.optionMenuGrp( cls.userJntAmt, edit=True, value=tempJntNo ) #Places the previously saved joint ammount into the new window. 
+        cmds.optionMenuGrp( cls.userRO, edit=True, value=tempRO )#Places the previously saved joint ammount into the new window. 
+        cmds.radioButtonGrp( cls.radRadio, edit=True, select=2 ) #Automatically sets the radio button to the locator method. 
+        MyUi.displayLocOps() #Displays the top of the locator method options. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def confirmation(cls): #Method for displaying the length options confirmation window. 
+        
+        if cmds.window( "Confirmation", exists=True ): #Checks whether theres already a confirmation window. 
+            cmds.deleteUI( "Confirmation", window=True ) #If so it deletes the previous window. 
+
+            
+        cmds.select(deselect=True) #Deselects everything in the scene. 
+
+        cls.autoRad = None #Resets the autorad value to default. 
+        MyUi.getAutoVals() #Runs the autovals method to obtain the controller scale and joint radius. 
+
+        cls.confirmSet = cmds.window( "Confirmation", width=400, title="Confirm Rig" , resizeToFitChildren=True,) #Creates the actual window. 
+            
+        cmds.columnLayout( columnWidth=400 ) #Sets the orientation of the window to a column layout.
+        cmds.separator( style="none", height=5 , width=400 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+        cls.userCtlSize = cmds.floatSliderGrp( label='Set Controller Scale', 
+                                         field=True, #Makes the float field editable by the user. 
+                                         minValue=0.1, #Determines the minimum value for the slider.
+                                         maxValue=2, #Determines the maximum value for the slider. 
+                                         fieldMinValue=0.01,  #Determines the minimum value for the text box, I made this lower than the slider so the user can make it smaller than 0.1 if they want.
+                                         fieldMaxValue=10, #Determines the maximum value for the text box, I made this higher than the slider so the user can make it smaller than 2 if they want.
+                                         value=1, #Sets the default value to 1. 
+                                         precision=2, #Sets how many decimal places the number can have.
+                                         width=380, #Sets the width of the float slider. 
+                                         changeCommand= "MyUi.getAndSetCtlScale()" )  #Launches the command that gets the value from the float slider and sets the controller scale.
+                                          
+        cmds.separator( style="none", height=5 , width=400 )  #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+                               
+        cls.userRadSize = cmds.floatSliderGrp( label='Set Joint Radius', 
+                                         field=True, #Makes the float field editable by the user. 
+                                         minValue=0.1, #Determines the minimum value for the slider.
+                                         maxValue=2, #Determines the maximum value for the slider. 
+                                         fieldMinValue=0.01, #Determines the minimum value for the text box, I made this lower than the slider so the user can make it smaller than 0.1 if they want.
+                                         fieldMaxValue=10, #Determines the maximum value for the text box, I made this higher than the slider so the user can make it smaller than 2 if they want.
+                                         value=cls.autoRad, #Sets the default value as the auto radius value. 
+                                         precision=2, #Sets how many decimal places the number can have.
+                                         width=380, #Sets the width of the float slider. 
+                                         changeCommand="MyUi.getAndSetJntRad()" ) #Launches the command that gets the value from the float slider and sets the joint radius.
+                                                                                                                                                           
+        cmds.separator( style="none", height=5 , width=400 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window.       
+                    
+        cmds.rowLayout( numberOfColumns=2,  #Sets the orientation of the window to a row layout.
+                        columnWidth2=(200, 200), #Makes eash row 200 wide.
+                        adjustableColumn=2, #Sets 2 columns.
+                        columnAlign=(1, 'right'), #Alligns the columns to the right.
+                        columnAttach=[(1, 'both', 0), (2, 'both', 0)] ) #Attaches the collumns to one another. 
+                              
+        cmds.button( label= "Confirm", height=50, command="MyUi.exitAllUI()", width=200 ) #Creates a confirm button which will keep the rig and exit the UI.
+        cmds.button( label="Edit", height=50, command="MyUi.editOp()", width=200 ) #Creates an edit button which will bring back the main UI.
+        cmds.scriptJob( uiDeleted = [cls.confirmSet, cls.deleteRig] ) #Launches a command that deletes the rig if the user exits the GUI.                       
+        cmds.showWindow() #Displays the window.
+
+    @classmethod #Decorator for classmethod definition.
+    def locConfirmation(cls): #Method for displaying the locator options confirmation window. 
+        if cmds.window( "locConfirmation", exists=True ): #Checks whether theres already a confirmation window. 
+            cmds.deleteUI( "locConfirmation", window=True ) #If so it deletes the previous window. 
+            
+        cmds.select(deselect=True) #Deselects everything in the scene.
+        
+        cls.autoRad = None #Resets the autorad value to default. 
+
+        MyUi.getAutoVals() #Runs the autovals method to obtain the controller scale and joint radius. 
+        
+        cls.confirmSet = cmds.window( "locConfirmation", width=400, title="Confirm Rig", resizeToFitChildren=True,) #Creates the actual window.
+        cmds.columnLayout( columnWidth=400 ) #Sets the orientation of the window to a column layout.
+        cmds.separator( style="none", height=5 , width=400 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window. 
+        
+        cls.userCtlSize = cmds.floatSliderGrp( label='Set Controller Scale', #Creates the controller scale float slider assigining it a label. 
+                                         field=True, #Makes the float field editable by the user. 
+                                         minValue=0.1, #Determines the minimum value for the slider.
+                                         maxValue=2, #Determines the maximum value for the slider.
+                                         fieldMinValue=0.01, #Determines the minimum value for the text box, I made this lower than the slider so the user can make it smaller than 0.1 if they want.
+                                         fieldMaxValue=10, #Determines the maximum value for the text box, I made this higher than the slider so the user can make it smaller than 2 if they want.
+                                         value=1, #Sets the default value to 1. 
+                                         precision=2,  #Sets how many decimal places the number can have.
+                                         width=380, #Sets the width of the float slider. 
+                                         changeCommand= "MyUi.getAndSetCtlScale()" ) #Launches the command that gets the value from the float slider and sets the controller scale.
+                                            
+        cmds.separator( style="none", height=5 , width=400 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window.             
+                                    
+        cls.userRadSize = cmds.floatSliderGrp( label='Set Joint Radius', 
+                                         field=True, #Makes the float field editable by the user. 
+                                         minValue=0.1, #Determines the minimum value for the slider.
+                                         maxValue=2, #Determines the maximum value for the slider.
+                                         fieldMinValue=0.01, #Determines the minimum value for the text box, I made this lower than the slider so the user can make it smaller than 0.1 if they want.
+                                         fieldMaxValue=10, #Determines the maximum value for the text box, I made this higher than the slider so the user can make it smaller than 2 if they want.
+                                         value=cls.autoRad, #Sets the default value as the auto radius value. 
+                                         precision=2,  #Sets how many decimal places the number can have.
+                                         width=380, #Sets the width of the float slider. 
+                                         changeCommand="MyUi.getAndSetJntRad()" ) #Launches the command that gets the value from the float slider and sets the joint radius.                                        
+                                                                                                         
+        cmds.separator( style="none", height=5 , width=400 ) #Creates a seperator, as it's set to none it will just be a empty gap in the GUI window.   
+            
+        cmds.rowLayout( numberOfColumns=2, #Sets the orientation of the window to a row layout.
+                    columnWidth2=(200, 200), #Makes eash row 200 wide.
+                    adjustableColumn=2, #Sets 2 columns.
+                    columnAlign=(1, 'right'), #Alligns the columns to the right.
+                    columnAttach=[(1, 'both', 0), (2, 'both', 0)] ) #Attaches the collumns to one another. 
+                           
+        cmds.button( label= "Confirm", height=50, command="MyUi.exitAllUI()", width=200 ) #Creates a confirm button which will keep the rig and exit the UI.
+        cmds.button( label="Edit", height=50, command="MyUi.locEditOp()", width=200 ) #Creates an edit button which will bring back the main UI.
+        cmds.scriptJob( uiDeleted = [cls.confirmSet, cls.deleteRig] ) #Launches a command that deletes the rig if the user exits the GUI.                         
+        cmds.showWindow() #Displays the window.
+        
+    @classmethod #Decorator for classmethod definition.        
+    def createFKSpine(cls): #Method for creating the FK spine Module. 
+        jBtwnLen = float(cls.jBtwnLen) #Saves the jBtwnLen attribute to a local variable. 
+        jRad = float(cls.jRad) #Saves the jRad attribute to a local variable. 
+        jOri = cls.jOri #Saves the jOri attribute to a local variable. 
+        jRes = int(cls.jRes) #Saves the jRes attribute to a local variable. 
+        j_list = [] #Creates an empty list. 
+        ctlGrps = {} #Creates an empty dictionary
+        midJnt = int(0.5*float(cls.jRes)) #Calculates the mid joint by halving the jRes value. 
+        cls.attrsToLock = ctlGrps #Saves the attrsToLock method to a local variable.
+        
+        for i in range (0, jRes, 1): #Loops the joint resolution ammount. 
+            j_list.append(cmds.joint( position=[0, i*jBtwnLen, 0], #Appends the current joint in the loop to the jList list. 
+                rotationOrder=jOri, #Assigns the user detemined joint orientation. 
+                radius=jRad, #Assigns the user detemined joint radius. 
+                name=f"{cls.PFX}_spine_0{i+1}_{cls.rigNo}_jnt")) #Sets the name of each joint using the loops iteration number for the joint number (+1 as I didn't want spine00)         
+            cmds.setAttr( f"{j_list[0]}.jointOrientZ", 90 ) #Changes the X direction of the joint to face upwards. 
+        
+        cls.j_list = j_list #Assign the jList attribute to the local variable version. 
+        
+        ctlGrps[f"base_{cls.rigNo}_ctl"], ctlGrps[f"base_{cls.rigNo}_con"], ctlGrps[f"base_{cls.rigNo}_off"] = MyUi.create_ctl( f"{cls.LOCS[0]}" ) #Creates all the base controls and it's surrounding groups using the create_ctl method and assigns them to local variables. 
+        ctlGrps[f"mid_{cls.rigNo}_ctl"], ctlGrps[f"mid_{cls.rigNo}_con"], ctlGrps[f"mid_{cls.rigNo}_off"] = MyUi.create_ctl( f"{cls.LOCS[1]}" ) #Creates all the mid controls and it's surrounding groups using the create_ctl method and assigns them to local variables. 
+        ctlGrps[f"top_{cls.rigNo}_ctl"], ctlGrps[f"top_{cls.rigNo}_con"], ctlGrps[f"top_{cls.rigNo}_off"] = MyUi.create_ctl( f"{cls.LOCS[2]}" ) #Creates all the top controls and it's surrounding groups using the create_ctl method and assigns them to local variables. 
+            
+        tmp_con_mid = cmds.pointConstraint( j_list[midJnt], ctlGrps[f"mid_{cls.rigNo}_off"] ) #Temporarily point constaints the mid_off (including and its children i.e. the mid controller) to the mid joint calculated previously. 
+        tmp_con_top = cmds.pointConstraint( j_list[-1], ctlGrps[f"top_{cls.rigNo}_off"] ) #Temporarily point constaints the top_off (including and its children i.e. the top controller) to the last joint (-1 in the j_list list).
+        cmds.delete( tmp_con_mid, tmp_con_top ) #Delete both the constraints. 
+
+        cmds.orientConstraint( ctlGrps[f"base_{cls.rigNo}_ctl"], ctlGrps[f"mid_{cls.rigNo}_con"] ) #Orient constraints the mid_con to the master base_ctl. 
+        cmds.orientConstraint( ctlGrps[f"mid_{cls.rigNo}_ctl"], ctlGrps[f"top_{cls.rigNo}_con"] ) #Orient constraints the top_con to the master mid_ctl. 
+        
+        cmds.pointConstraint( j_list[0], ctlGrps[f"base_{cls.rigNo}_ctl"] ) #Point constraints the bottom joint to its's master the base_ctl. 
+        cmds.pointConstraint( j_list[midJnt], ctlGrps[f"mid_{cls.rigNo}_ctl"] ) #Point constraints the middle joint to its's master the mid_ctl. 
+        cmds.pointConstraint( j_list[-1], ctlGrps[f"top_{cls.rigNo}_ctl"] ) #Point constraints the top joint to its's master the top_ctl. 
+
+        midList = [cls.jnt_ori( ctlGrps[f"mid_{cls.rigNo}_ctl"], j_list[i]) for i in range (1, (jRes -1) )] #Creates a list to include all the joints except for the bottom and top joints. 
+        
+        for i in range (midJnt): #Creates a loop to go up to the mid joint value.
+            cls.jnt_ori( ctlGrps[f"base_{cls.rigNo}_ctl"], j_list[i] )  #Orient constrain the joints up to (and not including) the mid joint to the base controller. 
+            
+        for i in range(midJnt + 1, jRes ):
+            cls.jnt_ori( ctlGrps[f"top_{cls.rigNo}_ctl"], j_list[i] ) #Orient constrain all the joints above the mid joint to the top controller. 
+        
+        for i in range(1 , len(midList) +2): #Creates a loop to iterate through the midList (all the joints apart from the top and bottom joints).
+                if i != midJnt and i < ( 1 + len(midList) ) : # If the iteration does not include the middle joint and includes all the rest of the joints.              
+                    cmds.setAttr( f"{midList[i -1][0]}.interpType", 2 ) #Set the interpret type to 2 (shortest).
+                if i <= midJnt -1: #If the joint is less than the mid point. 
+                    cmds.setAttr( f"{midList[i-1][0]}.{cls.PFX}_mid_{cls.rigNo}_ctlW0", cls.ratioFormula( midList, i, 0) ) # Set the mid control influence using the ratio formula module. 
+                    cmds.setAttr( f"{midList[i-1][0]}.{cls.PFX}_base_{cls.rigNo}_ctlW1", (1 - cls.ratioFormula(midList, i, 0)) ) # Set the base control influence using the ratio formula module. 
+                elif i >= midJnt and i < len(midList): #If the joint is above the mid point. 
+                    cmds.setAttr( f"{midList[i][0]}.{cls.PFX}_mid_{cls.rigNo}_ctlW0", (1 - cls.ratioFormula( midList, i, 1)) ) # Set the mid control influence using the ratio formula module. 
+                    cmds.setAttr( f"{midList[i][0]}.{cls.PFX}_top_{cls.rigNo}_ctlW1", (cls.ratioFormula( midList, i, 1)) ) # Set the top control influence using the ratio formula module. 
+                    
+        
+        cmds.group( em=True, name=cls.rigGrpName ) #Creates a group to encapsulate the entire rig. 
+        
+        for i in cls.LOCS: #Loops through each controller. 
+            cmds.parent( f"{cls.PFX}_{i}_{cls.rigNo}_off", cls.rigGrpName ) #Parents the controllers to the main surrounding group created previously. 
+            
+        cmds.parent( f"{cls.PFX}_spine_01_{cls.rigNo}_jnt", cls.rigGrpName ) #Parents the base joint to the main surrounding group created previously. 
+        cmds.select( cls.rigGrpName ) #Selects the group surrounding the entire rig. 
+        cmds.viewFit()#Focuses the viewport to the rig. 
+        cmds.select( clear=True )#Deselects the rig. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def runLockAttrs(cls): #Method for running the lock attribute method to all targets 
+        for i in cls.attrsToLock: #Loops through the attribute to lock list. 
+            cls.lock_attrs(i) #Locks that specific element using the lock attrs method. 
+            
+    @classmethod #Decorator for classmethod definition.
+    def getAutoVals(cls): #Method to automatically calculate the values used for the radius and controller scale and display them in the float sliders. 
+        cls.totalLen = cls.jTotalLen #Assigns the jTotalLen attribute to the totalLen attribute. 
+        cls.autoCtlScale = cls.totalLen * 10 ** -1 #This value is calculated by moving the decimal place of the total length up one, found this to be the optimal size. 
+        cls.autoRad = (cls.totalLen * 0.5) * 10 ** -1 #This value is calculated by halving the total length then moving the decimal up one, found this to be the optimal size. 
+        
+    @classmethod #Decorator for classmethod definition.
+    def getAndSetCtlScale(cls): #Method to get the user scale value and apply it to controllers.
+        cls.userScale =  cmds.floatSliderGrp( cls.userCtlSize, query=True, value=True ) #Gets the value in the user control size float slider. 
+        cls.ctlScale = cls.autoCtlScale * cls.userScale #As I want this the displayed value to update as its being changed it was necessary  to multiple the attributes.  
+        for i in cls.LOCS: #For loop to loop between all the locators. 
+            cmds.xform( f"{cls.PFX}_{i}_{cls.rigNo}_off", scale=(cls.ctlScale, cls.ctlScale, cls.ctlScale) ) #Applies the new scale value to the controller currently in the loop. 
+            
+    @classmethod #Decorator for classmethod definition.
+    def getAndSetJntRad(cls): #Method to get the user radius value and apply it to joints.
+        cls.userRad = cmds.floatSliderGrp( cls.userRadSize, query=True, value=True ) #Gets the value in the user radius size float slider. 
+        for i in cls.j_list: #For loop to loop between all the joints.
+             cmds.joint(i, edit=True, radius=cls.userRad) #Applies the new radius value to the joint currently in the loop.
+        
+    @classmethod #Decorator for classmethod definition.
+    def locExecute(cls): #Method to be execute a series of methods when the locator execute button is pressed. 
+        cmds.window( cls.WINDOW_NAME, edit=True, visible=False ) #Hides the main window. 
+        MyUi.calculateLocDis() #Calculates the locator distance number. 
+        
+        if cls.jTotalLen == 0: #If the locators are in the same position. 
+            MyUi.showLocSamePosError() #Show the same position locator error window. 
+        elif MyUi.checkLocPosOk(): #Check if the bottom locators Y is above the top locators. 
+            MyUi.showLocTopPosError() #Show the bottom locator Y translation error window. 
+        else: #If every thing is all good. 
+            MyUi.locConfirmation() #Bring up the locator confirmation menu. 
+            MyUi.convertTotalLen() #Convert to a between length value.
+            MyUi.aimLocs() #Temp aim constriant.
+            MyUi.createFKSpine() #Creates the actual rig. 
+            MyUi.getAutoVals() #Calculate the auto values for the scale and radius. 
+            MyUi.getAndSetCtlScale() #Get and set the scale values.
+            MyUi.getAndSetJntRad() #Get and set the radius values.
+            MyUi.orientRig() #Temp orient constraint between the rig and the bottom locator.
+            MyUi.deleteLocs() #Delete the locators. 
+
+    @classmethod #Decorator for classmethod definition.
+    def totalLenExecute(cls): #Method to be execute a series of methods when the total length execute button is pressed. 
+        cmds.window( cls.WINDOW_NAME, edit=True, visible=False ) #Hides the main window.
+        MyUi.getTotalLen() #Get the total length value from the UI.
+        MyUi.confirmation() #Bring up the length conformation window. 
+        MyUi.convertTotalLen() #Convert to a between length value.
+        MyUi.createFKSpine() #Creates the actual rig. 
+        MyUi.getAutoVals()  #Calculate the auto values for the scale and radius. 
+        MyUi.getAndSetCtlScale() #Get and set the scale values.
+        MyUi.getAndSetJntRad() #Get and set the radius values.
+
+    @classmethod #Decorator for classmethod definition.
+    def btwnLenExecute(cls): #Method to be execute a series of methods when the between length execute button is pressed. 
+        cmds.window( cls.WINDOW_NAME, edit=True, visible=False ) #Hides the main window.
+        MyUi.getBtwnLen() #Gets the between length value from the UI
+        MyUi.confirmation() #Bring up the length conformation window. 
+        MyUi.createFKSpine() #Creates the actual rig.
+        MyUi.getAndSetCtlScale() #Get and set the scale values.
+        MyUi.getAndSetJntRad() #Get and set the radius values
+
+if __name__ == "__main__": #Check if the file being run is the main file. 
+    # if cmds.objExists( MyUi.rigGrpName ):
+    #     cmds.delete( MyUi.rigGrpName )
+        
+    MyUi.display() #If so run the display method. 
+    
