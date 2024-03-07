@@ -1,3 +1,62 @@
+"""
+Note: The script was created in Maya 2023, i've found in Maya 2022 the GUI size is abit off. 
+Description: Automatically constructs a shared influence FK spine module. Through the use of the GUI, the user can specify:
+    -	How many joints are in the rig. 
+    -	Rotation order for the rig elements. 
+    -	Which method they want to construct the rig, the three being:
+        -	Based on the total length of the rig. 
+        -	Based on the distance between each joint. 
+        -	Created between two locators.
+        
+    -	In each method the user can then specify:
+-	The scale of the locators (where the script will automatically have a default scale based on the total length of the rig)
+-	The radius of the joints (where the script will automatically have a default radius based on the total length of the rig)
+-	Then the user can either confirm (keep) the rig, or edit (delete the rig and start the inputs again). 
+
+Usage: 
+    1)	 Select joint amount (can be left at default)
+    2)	Select the rotation order (can be left at default) 
+    3)	Select Method of constructing rig
+    
+    Between two locators method: 
+        1)	Change radio box to 'Between Two Locators'.
+        2)	Press 'Create Bottom Locator' Button. 
+        3)	Place bottom locator to desired position. 
+        4)	Press 'Create Top Locator' button. 
+        5)	Place bottom locator to desired position. 
+        6)	Press 'Execute Locator Method' button. 
+    Important: 
+        -	Locators cannot be in the same position. 
+        -	Bottom locator cannot be above the top locator in the Y-direction in world space.
+-	If you press a locator button twice the first locator will be deleted and a new locator will be created at world 0. 
+-	If you change the method to 'Fixed Length' or exit the GUI window the locators will be deleted. 
+        
+    Total length method: 
+        1)	Change radio box to 'Fixed Length'.
+        2)	 Change radio box to 'Total Length'.
+        3)	 Change the value of the 'Total Length of Joint Chain' input (can be left at default). 
+        4)	Press 'Execute Total Length Method' button. 
+        
+    Length between joints method: 
+        1)	Change radio box to 'Fixed Length'.
+        2)	 Change radio box to 'Length Between Joints'.
+        3)	 Change the value of the 'Length Between Each Joints' input (can be left at default). 
+        4)	Press 'Execute Length Between Joints Method' button. 
+
+    Applicable for every method: 
+    Once the Execute button has been pressed a separate window will appear. 
+1)	Change the value of the 'Set Controller Scale' input (can be left at default).
+2)	Change the value of the 'Set Joint Radius' input (can be left at default).
+3)	Press either the 'Confirm' button (will exit the GUI) or the 'Edit' button (will open up the previous window and delete the current rig. 
+
+Future Improvements: 
+-	If I was to redo the script I would have definitely broken the script into multiple files (e.g. a GUI file, a logic file etc.) then import the methods accordingly. 
+-	I found by the end trying to a locate methods or trying to organise the file became a bit of a nightmare working with 40 plus methods. 
+-	I intentionally created the GUI within Maya in order to become more experienced with the process. However, in the future I'd probably go with something like PyQt as it seems a bit more developed and the more intuitive way of creating GUIs. 
+-	The reason I adopted the class method approach was because I was having issues getting the 'change commands' to work. The solution code I found online used class methods and after giving it a go seemed to resolve my issues. At this point I can't really see too many drawbacks taking this approach however I'm sure a more experienced programmer may have a better answer as to why it may not be the best solution.
+"""
+
+
 import maya.cmds as cmds #Importing the maya.cmds library and giving it the alias "cmds". 
 import math #Importing the math library.
 import maya.api.OpenMaya as om #Importing the maya.api.OpenMaya library and giving it the alias "om". 
